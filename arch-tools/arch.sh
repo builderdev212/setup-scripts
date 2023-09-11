@@ -6,11 +6,20 @@ VERSION=1.0
 # Exit error numbers
 FDISK_ERROR=1
 MOUNT_ERROR=2
+LOCALE_ERROR=3
 
 # Important filepaths
 ARCH_MOUNT_PATH=/mnt
 ARCH_MOUNT_BOOT_PATH=$ARCH_MOUNT_PATH/boot
 FSTAB_PATH=/etc/fstab
+
+ZONE_INFO_PATH=$ARCH_MOUNT_PATH/usr/share/zoneinfo/
+LOCALTIME_PATH=$ARCH_MOUNT_PATH/etc/localtime
+
+LOCALE_CONF_PATH=$ARCH_MOUNT_PATH/etc/locale.conf
+
+HOSTNAME_PATH=$ARCH_MOUNT_PATH/etc/hostname
+HOSTS_PATH=$ARCH_MOUNT_PATH/etc/hosts
 
 # Package lists
 BASE_PACKAGES=("base" "linux" "linux-firmware")
@@ -50,8 +59,6 @@ is_part() {
 # Usage:
 #     clear_disk path_to_disk
 #                (ie /dev/sda)
-# Example:
-#     clear_disk /dev/sda
 clear_disk() {
     # Make sure two arguments were passed
     if [[ $# != 2 ]]; then
@@ -74,9 +81,6 @@ clear_disk() {
 # Usage:
 #     create_partition path_to_disk  number          type                          size
 #                      (ie /dev/sda) (ie 1) (uefi, swap, ext4, ntfs) (ie 10G, default is to fill drive)
-# Example:
-#     create_partition /dev/sda ext4
-#     create_partition /dev/sda uefi 1G
 create_partition() {
     if [[ $# != 3 ]] && [[ $# != 4 ]]; then
         echo "Error: clear_partition requires either 3 or 4 arguements, $# was given." >&2
@@ -133,9 +137,6 @@ create_partition() {
 # Usage:
 #     mount_disks root_partition boot_partition   swap_partition
 #                   (/dev/sda3)    (/dev/sda1)  (/dev/sda2 or none)
-# Example:
-#     mount_disks /dev/sda2 /dev/sda1
-#     mount_disks /dev/sda3 /dev/sda1 /dev/sda2
 mount_disks() {
     if [[ $# != 2 ]] && [[ $# != 3 ]]; then
         echo "Error: clear_partition requires either 2 or 3 arguements, $# was given." >&2
@@ -161,7 +162,6 @@ create_fstab() {
     genfstab -U $ARCH_MOUNT_PATH >> $ARCH_MOUNT_PATH$FSTAB_PATH
 }
 
-
 # Helper functions for pacman
 
 # Update the mirrorlist using reflector and update the package databases.
@@ -177,23 +177,69 @@ install_base_pkgs() {
     pacstrap -K $ARCH_MOUNT_PATH ${BASE_PACKAGES[@]}
 }
 
+# chroot helper functions
+
 # enter an arch install
 enter_install() {
     arch-chroot $ARCH_MOUNT_PATH
 }
 
-# exit arch install
-exit_install() {
-    exit
+# locale setup functions
+
+# Setup timezone locales.
+# Usage:
+#     setup_locales     time_zone
+#                   (America/New-York)
+setup_time_locales() {
+    local user_timezone=$1
+
+    #timedatectl set-timezone $user_timezone
+    ln -sf $ZONE_INFO_PATH/$user_timezone $LOCALTIME_PATH
+    hwclock --systohc
 }
 
-clear_disk /dev/sda GPT
-create_partition /dev/sda 1 uefi 1G
-create_partition /dev/sda 2 swap 4G
-create_partition /dev/sda 3 ext4
-update_pacman_mirrors
-mount_disks /dev/sda3 /dev/sda1 /dev/sda2
-install_base_pkgs
-create_fstab
-enter_install
-exit_install
+# Copy locale.conf before chrooting into the install.
+# Usage:
+#     copy_locale_conf path_to_locale.conf
+#                       (ie locale.conf)
+copy_locale_conf() {
+    local locale_path=$1
+
+    if [ -e "$locale_path" ]; then
+        cp $locale_path $LOCALE_CONF_PATH
+    else
+        exit $LOCALE_ERROR
+    fi
+}
+
+# Setup locales.
+setup_locales() {
+    echo >&2
+    locale-gen >&2
+}
+
+# Network setup functions.
+
+# Setup the hostname for the computer.
+# Usage:
+#     setup_hostname  hostname
+#                    (ie archvm)
+setup_hostname() {
+    local hostname=$1
+
+    touch $HOSTNAME_PATH
+    echo $hostname > $HOSTNAME_PATH
+}
+
+# Setup hosts file.
+# Usage:
+#     setup_hosts  hostname
+#                 (ie archvm)
+setup_hosts() {
+    local hostname=$1
+
+    echo >> "$HOSTS_PATH"
+    echo "127.0.0.1 localhost" >> "$HOSTS_PATH"
+    echo "::1       localhost" >> "$HOSTS_PATH"
+    echo "127.0.1.1 $hostname" >> "$HOSTS_PATH"
+}
