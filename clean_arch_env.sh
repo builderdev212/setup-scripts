@@ -11,7 +11,7 @@ CLEAN_ARG="-c"
 # Path variables
 IMAGE_NAME="clean_arch"
 PATH_OF_SCRIPT=$PWD
-PATH_OF_INSTALLER=$PWD/installers/archlinux*.iso
+PATH_OF_INSTALLER=$PWD/installers/archlinux.iso
 TOOL_PATH=$PWD/arch-tools
 
 # UEFI Paths
