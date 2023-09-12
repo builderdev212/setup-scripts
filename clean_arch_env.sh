@@ -1,6 +1,5 @@
 #!/bin/bash
 # Simple tool to create a test arch virtual machine with QEMU.
-VERSION=1.0
 
 # Script arguments
 BUILD_ARG="-b"

@@ -1,77 +1,75 @@
 #!/bin/bash
-VERSION=1.0
 # Modular Arch Installer
 # Uses GPT partition scheme and only works with UEFI
 
 # Exit error numbers
-FDISK_ERROR=1
-MOUNT_ERROR=2
-LOCALE_ERROR=3
-NETWORK_ERROR=4
-USER_ERROR=5
+fdisk_error=1
+mount_error=2
+locale_error=3
+network_error=4
+user_error=5
 
 ## Important Filepaths ##
 
 # Disk related filepaths
-ARCH_MOUNT_PATH="/mnt"
-ARCH_MOUNT_BOOT_PATH="$ARCH_MOUNT_PATH/boot"
-FSTAB_PATH="$ARCH_MOUNT_PATH/etc/fstab"
+arch_mount_path="/mnt"
+arch_mount_boot_path="$arch_mount_path/boot"
+fstab_path="$arch_mount_path/etc/fstab"
 
 # Pacman related filepaths
-PACMAN_MIRRORLIST_PATH="$ARCH_MOUNT_PATH/etc/pacman.d/mirrorlist"
+pacman_mirrorlist_path="$arch_mount_path/etc/pacman.d/mirrorlist"
 
 # Locale related filepaths
-ZONE_INFO_PATH="$ARCH_MOUNT_PATH/usr/share/zoneinfo/"
-LOCALTIME_PATH="$ARCH_MOUNT_PATH/etc/localtime"
-LOCALE_CONF_PATH="$ARCH_MOUNT_PATH/etc/locale.conf"
+zone_info_path="$arch_mount_path/usr/share/zoneinfo/"
+localtime_path="$arch_mount_path/etc/localtime"
+locale_conf_path="$arch_mount_path/etc/locale.conf"
 
 # Network related filepaths
-HOSTNAME_PATH="$ARCH_MOUNT_PATH/etc/hostname"
-HOSTS_PATH="$ARCH_MOUNT_PATH/etc/hosts"
+hostname_path="$arch_mount_path/etc/hostname"
+hosts_path="$arch_mount_path/etc/hosts"
 
 ## Package Lists ##
-BASE_PACKAGES=("base" "linux" "linux-firmware")
-CLI_TOOL_PACKAGES=("nano" "reflector")
+base_packages=("base" "linux" "linux-firmware")
+cli_tool_packages=("nano" "reflector")
 
 ## Disk Related Functions ##
 
 # Clear a disk's partition table and set the partition table to gpt.
 # Usage:
-#     clear_disk path_to_disk
-#                (ie /dev/sda)
-function clear_disk() {
+#     clearDisk path_to_disk
+#               (ie /dev/sda)
+function clearDisk() {
     # Make sure two arguments were passed
     if [[ $# != 1 ]]; then
-        echo "Error: clear_disk requires 1 arguements, $# was given." >&2
-        exit $FDISK_ERROR
+        echo "Error: clearDisk requires 1 arguements, $# was given." >&2
+        exit $fdisk_error
     fi
 
-    # Arguments
     local disk_name=$1
 
     # Ensure the disk exists.
-    test -e $disk_name
+    test -e "${disk_name}"
     local is_disk=$?
 
     if [[ $is_disk != 0 ]]; then
         echo "Error: disk doesn't exist." >&2
-        exit $FDISK_ERROR
+        exit $fdisk_error
     fi
 
     (
     echo "g"
     echo "w"
-    ) | fdisk $disk_name
+    ) | fdisk "${disk_name}"
 }
 
 # Create a partition and set its type, size, and number.
 # Usage:
-#     create_partition path_to_disk  number          type                          size
-#                      (ie /dev/sda) (ie 1) (uefi, swap, ext4, ntfs) (ie 10G, default is to fill drive)
-function create_partition() {
+#     createPartition path_to_disk  number          type                          size
+#                     (ie /dev/sda) (ie 1) (uefi, swap, ext4, ntfs) (ie 10G, default is to fill drive)
+function createPartition() {
     if [[ $# != 3 ]] && [[ $# != 4 ]]; then
-        echo "Error: create_partition requires either 3 or 4 arguements, $# was given." >&2
-        exit $FDISK_ERROR
+        echo "Error: createPartition requires either 3 or 4 arguements, $# was given." >&2
+        exit $fdisk_error
     fi
 
     # Arguments
@@ -88,61 +86,58 @@ function create_partition() {
     local part_type=""
 
     for ((type = 0; type < ${#part_types[@]}; type++)); do
-        if [[ $partition_type == ${part_types[$type]} ]]; then
+        if [[ $partition_type == "${part_types[$type]}" ]]; then
             part_type=${part_type_args[$type]}
         fi
     done
 
     if [[ ! $part_type ]]; then
         echo "Error: partion type must be one of the following: ${partition_types[@]}" >&2
-        exit $FDISK_ERROR
+        exit $fdisk_error
     fi
 
     # Ensure the disk exists.
-    test -e $disk_name
+    test -e "${disk_name}"
     local is_disk=$?
 
     if [[ $is_disk != 0 ]]; then
         echo "Error: disk doesn't exist." >&2
-        exit $FDISK_ERROR
+        exit $fdisk_error
     fi
 
     # Ensure the partition doesn't already exist.
-    test -e $disk_name$part_num
+    test -e "${disk_name}${part_num}"
     local is_disk=$?
 
     if [[ $is_disk == 0 ]]; then
         echo "Error: partition already exists." >&2
-        exit $FDISK_ERROR
+        exit $fdisk_error
     fi
 
     (
     echo "n"          # Create a new partition
-    echo "$part_num"  # Specify the partition number
+    echo "${part_num}"  # Specify the partition number
     echo              # Always start at the default sector
-    echo "$part_size" # Add the alloted space
+    echo "${part_size}" # Add the alloted space
     echo "w"          # Write changes to the drive
-    ) | fdisk $disk_name
+    ) | fdisk "${disk_name}"
 
-    if [[ $partition_type == ${part_types[0]} ]]; then
-        mkfs.fat -F32 -F $disk_name$part_num
-    elif [[ $partition_type == ${part_types[1]} ]]; then
-        mkswap -F $disk_name$part_num
-    elif [[ $partition_type == ${part_types[2]} ]]; then
-        mkfs.ext4 -F $disk_name$part_num
-    elif [[ $partition_type == ${part_types[3]} ]]; then
-        mkfs.ntfs -F $disk_name$part_num
-    fi
+    case "${partition_type}" in
+        "${part_types[0]}") mkfs.fat -F32 -F "${disk_name}${part_num}";;
+        "${part_types[1]}") mkswap -F "${disk_name}${part_num}";;
+        "${part_types[2]}") mkfs.ext4 -F "${disk_name}${part_num}";;
+        "${part_types[3]}") mkfs.ntfs -F "${disk_name}${part_num}";;
+    esac
 }
 
 # Mount the partitions for root, boot, and swap respectively.
 # Usage:
-#     mount_disks root_partition boot_partition   swap_partition
-#                   (/dev/sda3)    (/dev/sda1)  (/dev/sda2 or none)
-function mount_disks() {
+#     mountDisks root_partition boot_partition   swap_partition
+#                 (/dev/sda3)    (/dev/sda1)   (/dev/sda2 or none)
+function mountDisks() {
     if [[ $# != 2 ]] && [[ $# != 3 ]]; then
-        echo "Error: mount_disks requires either 2 or 3 arguements, $# was given." >&2
-        exit $MOUNT_ERROR
+        echo "Error: mountDisks requires either 2 or 3 arguements, $# was given." >&2
+        exit $mount_error
     fi
 
     local root_part=$1
@@ -150,166 +145,171 @@ function mount_disks() {
     local swap_part=$3
 
     # Ensure the partitions exist.
-    test -e $root_part
+    test -e "${root_part}"
     local is_disk=$?
 
     if [[ $is_disk != 0 ]]; then
         echo "Error: root partition doesn't exist." >&2
-        exit $FDISK_ERROR
+        exit $fdisk_error
     fi
 
-    test -e $boot_part
+    test -e "${boot_part}"
     local is_disk=$?
 
     if [[ $is_disk != 0 ]]; then
         echo "Error: boot partition doesn't exist." >&2
-        exit $FDISK_ERROR
+        exit $fdisk_error
     fi
 
-    mount $root_part $ARCH_MOUNT_PATH
-    mount --mkdir $boot_part $ARCH_MOUNT_BOOT_PATH
+    mount "${root_part}" $arch_mount_path
+    mount --mkdir "${boot_part}" $arch_mount_boot_path
 
     if [[ $swap_part ]]; then
-        test -e $swap_part
+        test -e "${swap_part}"
         local is_disk=$?
 
         if [[ $is_disk != 0 ]]; then
             echo "Error: swap partition doesn't exist." >&2
-            exit $FDISK_ERROR
+            exit $fdisk_error
         fi
 
-        swapon $swap_part
+        swapon "${swap_part}"
     fi
 }
 
 # Generate the fstab file.
 # Usage:
-#     create_fstab
-function create_fstab() {
-    genfstab -U $ARCH_MOUNT_PATH >> $ARCH_MOUNT_PATH$FSTAB_PATH
+#     createFstab
+function createFstab() {
+    genfstab -U $arch_mount_path >> $arch_mount_path$fstab_path
 }
 
 ## Pacman Helper Functions ##
 
 # Update the mirrorlist using reflector and update the package databases.
 # Usage:
-#     update_pacman_mirrors
-function update_pacman_mirrors() {
-    reflector -c "US" -f 12 -l 10 -n 12 -p "https" --save $PACMAN_MIRRORLIST_PATH
+#     updatePacmanMirrors
+function updatePacmanMirrors() {
+    reflector -c "US" -f 12 -l 10 -n 12 -p "https" --save $pacman_mirrorlist_path
     pacman -Syy
 }
 
 # Packstrap basic packages into the arch install.
 # Usage:
-#     install_base_pkgs
-function install_base_pkgs() {
-    pacstrap -K $ARCH_MOUNT_PATH ${BASE_PACKAGES[@]}
+#     installBasePackages
+function installBasePackages() {
+    pacstrap -K $arch_mount_path ${base_packages[@]}
 }
 
 ## Locale Setup Functions ##
 
 # Setup timezone locales.
 # Usage:
-#     setup_locales     time_zone
+#     setupLocales      time_zone
 #                   (America/New-York)
-function setup_time_locales() {
+function setupTimeLocales() {
     if [[ $# != 1 ]]; then
-        echo "Error: setup_time_locales requires 1 arguement, $# was given." >&2
-        exit $LOCALE_ERROR
+        echo "Error: setupTimeLocales requires 1 arguement, $# was given." >&2
+        exit $locale_error
     fi
 
     local user_timezone=$1
 
     (
-    ln -sf $ZONE_INFO_PATH/$user_timezone $LOCALTIME_PATH
+    ln -sf "${zone_info_path}/${user_timezone}" $localtime_path
     hwclock --systohc
-    ) | arch-chroot $ARCH_MOUNT_PATH
+    ) | arch-chroot $arch_mount_path
 }
 
 # Copy locale.conf before chrooting into the install.
 # Usage:
-#     copy_locale_conf path_to_locale.conf
-#                       (ie locale.conf)
-function copy_locale_conf() {
+#     copyLocaleConf path_to_locale.conf
+#                     (ie locale.conf)
+function copyLocaleConf() {
     if [[ $# != 1 ]]; then
-        echo "Error: copy_locale_conf requires 1 arguement, $# was given." >&2
-        exit $LOCALE_ERROR
+        echo "Error: copyLocaleConf requires 1 arguement, $# was given." >&2
+        exit $locale_error
     fi
 
     local locale_path=$1
 
-    if [ -e "$locale_path" ]; then
-        cp $locale_path $LOCALE_CONF_PATH
+    if [ -e "${locale_path}" ]; then
+        cp "${locale_path}" $locale_conf_path
     else
-        echo "Error: $locale_path doesn't exist." >&2
-        exit $LOCALE_ERROR
+        echo "Error: ${locale_path} doesn't exist." >&2
+        exit $locale_error
     fi
 }
 
 # Setup locales.
 # Usage:
-#     setup_locales
-function setup_locales() {
-    locale-gen >&2 | arch-chroot $ARCH_MOUNT_PATH
+#     setupLocales
+function setupLocales() {
+    locale-gen >&2 | arch-chroot $arch_mount_path
 }
 
 ## Network Setup Functions ##
 
 # Setup the hostname for the computer.
 # Usage:
-#     setup_hostname  hostname
+#     setupHostname   hostname
 #                    (ie archvm)
-function setup_hostname() {
+function setupHostname() {
     if [[ $# != 1 ]]; then
-        echo "Error: setup_hostname requires 1 arguement, $# was given." >&2
-        exit $NETWORK_ERROR
+        echo "Error: setupHostname requires 1 arguement, $# was given." >&2
+        exit $network_error
     fi
 
     local hostname=$1
 
-    echo $hostname > $HOSTNAME_PATH
+    echo "${hostname}" > $hostname_path
 }
 
 # Setup hosts file.
 # Usage:
-#     setup_hosts
-function setup_hosts() {
-    local hostname=$(<$HOSTNAME_PATH)
+#     setupHosts
+function setupHosts() {
+    local hostname=""
+
+    hostname=$(<$hostname_path)
 
     if [[ ! $hostname ]]; then
         echo "Error: No valid hostname found." >&2
-        exit $NETWORK_ERROR
+        exit $network_error
     fi
 
-    echo >> $HOSTS_PATH
-    echo "127.0.0.1 localhost" >> $HOSTS_PATH
-    echo "::1       localhost" >> $HOSTS_PATH
-    echo "127.0.1.1 $hostname" >> $HOSTS_PATH
+    (
+    echo
+    echo "127.0.0.1 localhost"
+    echo "::1       localhost"
+    echo "127.0.1.1 ${hostname}"
+    ) >> $hosts_path
 }
 
 # User setup functions
 
 # Set a user's password.
 # Usage:
-#     set_pass   user
-#              (ie root)
-function set_pass() {
+#     setPassword   user
+#                 (ie root)
+function setPassword() {
     if [[ $# != 1 ]]; then
-        echo "Error: set_pass requires 1 arguement, $# was given." >&2
-        exit $USER_ERROR
+        echo "Error: setPassword requires 1 arguement, $# was given." >&2
+        exit $user_error
     fi
 
     local username=$1
 
-    id "$username"
+    id "${username}" >&2
     local is_user=$?
 
     if [[ $is_user != 0 ]]; then
-        echo "Error: User $username doesn't exist." >&2
-        exit $USER_ERROR
+        echo "Error: User ${username} doesn't exist." >&2
+        exit $user_error
     fi
 
-    read -srp "Password($username): " password
-    echo "$username:$password" | arch-chroot $ARCH_MOUNT_PATH chpasswd
+    printf "Password(${username}): " >&2
+    read -sr password
+    echo "${username}:${password}" | arch-chroot $arch_mount_path chpasswd
     unset password
 }
