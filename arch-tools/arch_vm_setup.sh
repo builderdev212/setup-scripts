@@ -1,6 +1,6 @@
 #!/bin/bash
 
-source $(dirname $0)/arch.sh
+source "$(dirname "$0")/arch.sh"
 
 clearDisk /dev/sda
 createPartition /dev/sda 1 uefi 1G
@@ -15,4 +15,3 @@ setupTimeLocales "America/New-York"
 setupLocales
 setupHostname archvm
 setupHosts
-setPassword "root"

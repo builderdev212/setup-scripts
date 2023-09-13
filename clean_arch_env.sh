@@ -9,15 +9,15 @@ CLEAN_ARG="-c"
 
 # Path variables
 IMAGE_NAME="clean_arch"
-PATH_OF_SCRIPT=$PWD
-PATH_OF_INSTALLER=$PWD/installers/archlinux.iso
-TOOL_PATH=$PWD/arch-tools
+PATH_OF_SCRIPT="$PWD"
+PATH_OF_INSTALLER="$PWD/installers/archlinux.iso"
+TOOL_PATH="$PWD/arch-tools"
 
 # UEFI Paths
-UEFI_PATH=/usr/share/edk2-ovmf/x64
-OVMF_CODE=$UEFI_PATH/OVMF_CODE.fd
-OG_OVMF_VARS=$UEFI_PATH/OVMF_VARS.fd
-OVMF_VARS=$PATH_OF_SCRIPT/$IMAGE_NAME/OVMF_VARS.fd
+UEFI_PATH="/usr/share/edk2-ovmf/x64"
+OVMF_CODE="$UEFI_PATH/OVMF_CODE.fd"
+OG_OVMF_VARS="$UEFI_PATH/OVMF_VARS.fd"
+OVMF_VARS="$PATH_OF_SCRIPT/$IMAGE_NAME/OVMF_VARS.fd"
 
 # VM Parameters
 # All sizes are in GB
@@ -35,11 +35,11 @@ setup_path() {
         echo "Error: directory \"$PATH_OF_SCRIPT/$IMAGE_NAME/\" already exists."
         exit 1
     else
-        mkdir $PATH_OF_SCRIPT/$IMAGE_NAME
+        mkdir "$PATH_OF_SCRIPT/$IMAGE_NAME"
     fi
 
     echo "Copying UEFI vars..."
-    cp $OG_OVMF_VARS $OVMF_VARS
+    cp $OG_OVMF_VARS "$OVMF_VARS"
 }
 
 # Create virtual drive
@@ -65,7 +65,7 @@ run() {
     echo "Running..."
     qemu-system-x86_64 -drive file="$PATH_OF_SCRIPT/$IMAGE_NAME/drive.cow" \
                        -drive if=pflash,format=raw,readonly=on,file=$OVMF_CODE \
-                       -drive if=pflash,format=raw,file=$OVMF_VARS \
+                       -drive if=pflash,format=raw,file="$OVMF_VARS" \
                        -machine q35 \
                        -enable-kvm \
                        -device intel-iommu,caching-mode=on \
@@ -80,8 +80,8 @@ run_installer() {
     qemu-system-x86_64 -boot d \
                        -drive file="$PATH_OF_SCRIPT/$IMAGE_NAME/drive.cow" \
                        -drive if=pflash,format=raw,readonly=on,file=$OVMF_CODE \
-                       -drive if=pflash,format=raw,file=$OVMF_VARS \
-                       -virtfs local,path=$TOOL_PATH,mount_tag=host0,security_model=passthrough,id=host0 \
+                       -drive if=pflash,format=raw,file="$OVMF_VARS" \
+                       -virtfs local,path="$TOOL_PATH",mount_tag=host0,security_model=passthrough,id=host0 \
                        -cdrom "$PATH_OF_INSTALLER" \
                        -machine q35 \
                        -enable-kvm \
@@ -96,7 +96,8 @@ run_installer() {
 clean() {
     echo "Cleaning environment..."
 
-    rm -r $PATH_OF_SCRIPT/$IMAGE_NAME
+    rm -r "${PATH_OF_SCRIPT:?}/$IMAGE_NAME"
+
 }
 
 # Make sure one and only one argument was passed.
@@ -109,13 +110,13 @@ elif [[ -z $1 ]]; then
 fi
 
 # Option runs
-if [[ $1 == $BUILD_ARG ]]; then
+if [[ $1 == "$BUILD_ARG" ]]; then
     build
-elif [[ $1 == $RUN_ARG ]]; then
+elif [[ $1 == "$RUN_ARG" ]]; then
     run
-elif [[ $1 == $RUN_INSTALLER_ARG ]]; then
+elif [[ $1 == "$RUN_INSTALLER_ARG" ]]; then
     run_installer
-elif [[ $1 == $CLEAN_ARG ]]; then
+elif [[ $1 == "$CLEAN_ARG" ]]; then
     clean
 else
     echo "Error: invalid arguement, either -b, -r, or -c must be passed."

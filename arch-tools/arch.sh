@@ -92,7 +92,7 @@ function createPartition() {
     done
 
     if [[ ! $part_type ]]; then
-        echo "Error: partion type must be one of the following: ${partition_types[@]}" >&2
+        echo "Error: partion type must be one of the following: ${part_types[*]}" >&2
         exit $fdisk_error
     fi
 
@@ -181,7 +181,7 @@ function mountDisks() {
 # Usage:
 #     createFstab
 function createFstab() {
-    genfstab -U $arch_mount_path >> $arch_mount_path$fstab_path
+    genfstab -U $arch_mount_path >> $fstab_path
 }
 
 ## Pacman Helper Functions ##
@@ -198,7 +198,7 @@ function updatePacmanMirrors() {
 # Usage:
 #     installBasePackages
 function installBasePackages() {
-    pacstrap -K $arch_mount_path ${base_packages[@]}
+    pacstrap -K $arch_mount_path "${base_packages[@]}"
 }
 
 ## Locale Setup Functions ##
@@ -288,28 +288,3 @@ function setupHosts() {
 
 # User setup functions
 
-# Set a user's password.
-# Usage:
-#     setPassword   user
-#                 (ie root)
-function setPassword() {
-    if [[ $# != 1 ]]; then
-        echo "Error: setPassword requires 1 arguement, $# was given." >&2
-        exit $user_error
-    fi
-
-    local username=$1
-
-    id "${username}" >&2
-    local is_user=$?
-
-    if [[ $is_user != 0 ]]; then
-        echo "Error: User ${username} doesn't exist." >&2
-        exit $user_error
-    fi
-
-    printf "Password(${username}): " >&2
-    read -sr password
-    echo "${username}:${password}" | arch-chroot $arch_mount_path chpasswd
-    unset password
-}
