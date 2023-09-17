@@ -63,7 +63,8 @@ build() {
 
 run() {
     echo "Running..."
-    qemu-system-x86_64 -drive file="$PATH_OF_SCRIPT/$IMAGE_NAME/drive.cow" \
+    qemu-system-x86_64 -boot c \
+                       -drive file="$PATH_OF_SCRIPT/$IMAGE_NAME/drive.cow" \
                        -drive if=pflash,format=raw,readonly=on,file=$OVMF_CODE \
                        -drive if=pflash,format=raw,file="$OVMF_VARS" \
                        -machine q35 \
@@ -78,11 +79,11 @@ run() {
 run_installer() {
     echo "Entering install environment..."
     qemu-system-x86_64 -boot d \
+                       -cdrom "$PATH_OF_INSTALLER" \
                        -drive file="$PATH_OF_SCRIPT/$IMAGE_NAME/drive.cow" \
                        -drive if=pflash,format=raw,readonly=on,file=$OVMF_CODE \
                        -drive if=pflash,format=raw,file="$OVMF_VARS" \
                        -virtfs local,path="$TOOL_PATH",mount_tag=host0,security_model=passthrough,id=host0 \
-                       -cdrom "$PATH_OF_INSTALLER" \
                        -machine q35 \
                        -enable-kvm \
                        -device intel-iommu,caching-mode=on \

@@ -8,29 +8,42 @@ mount_error=2
 locale_error=3
 network_error=4
 user_error=5
+bootloader_error=6
 
 ## Important Filepaths ##
 
 # Disk related filepaths
 arch_mount_path="/mnt"
-arch_mount_boot_path="$arch_mount_path/boot"
-fstab_path="$arch_mount_path/etc/fstab"
+arch_mount_boot_path="${arch_mount_path}/boot"
+fstab_path="${arch_mount_path}/etc/fstab"
 
 # Pacman related filepaths
-pacman_mirrorlist_path="$arch_mount_path/etc/pacman.d/mirrorlist"
+pacman_mirrorlist_path="/etc/pacman.d/mirrorlist"
 
 # Locale related filepaths
-zone_info_path="$arch_mount_path/usr/share/zoneinfo/"
-localtime_path="$arch_mount_path/etc/localtime"
-locale_conf_path="$arch_mount_path/etc/locale.conf"
+zone_info_path="/usr/share/zoneinfo/"
+localtime_path="/etc/localtime"
+locale_conf_path="${arch_mount_path}/etc/locale.conf"
 
 # Network related filepaths
-hostname_path="$arch_mount_path/etc/hostname"
-hosts_path="$arch_mount_path/etc/hosts"
+hostname_path="${arch_mount_path}/etc/hostname"
+hosts_path="${arch_mount_path}/etc/hosts"
+
+# rEFInd filepaths
+refind_conf_path="${arch_mount_path}/boot/refind_linux.conf"
 
 ## Package Lists ##
-base_packages=("base" "linux" "linux-firmware")
+base_packages=("base" "linux" "linux-firmware" "linux-headers")
+refind_packages=("refind" "efibootmgr")
+network_packages=("networkmanager")
+filesystem_tools_packages=("mtools" "dosfstools")
 cli_tool_packages=("nano" "reflector")
+
+## rEFInd boot args ##
+boot_args=("rw" "add_efi_memmap")
+default_boot_args=("initrd=initramfs-%v.img")
+fallback_boot_args=("initrd=initramfs-%v-fallback.img")
+terminal_boot_args=("systemd.unit=multi-user.target")
 
 ## Disk Related Functions ##
 
@@ -55,6 +68,23 @@ function clearDisk() {
         echo "Error: disk doesn't exist." >&2
         exit $fdisk_error
     fi
+
+    # unmount any partitions
+    mountpoint $arch_mount_boot_path
+    local is_mounted=$?
+
+    if [[ $is_mounted == 0 ]]; then
+        umount $arch_mount_boot_path
+    fi
+
+    mountpoint $arch_mount_path
+    local is_mounted=$?
+
+    if [[ $is_mounted == 0 ]]; then
+        umount $arch_mount_path
+    fi
+
+    swapoff -a
 
     (
     echo "g"
@@ -114,6 +144,7 @@ function createPartition() {
         exit $fdisk_error
     fi
 
+    # Create the partition
     (
     echo "n"          # Create a new partition
     echo "${part_num}"  # Specify the partition number
@@ -122,9 +153,25 @@ function createPartition() {
     echo "w"          # Write changes to the drive
     ) | fdisk "${disk_name}"
 
+    # Set the partition type
+    if [[ $(partx -g "${disk_name}" | wc -l) == 1 ]]; then
+        (
+        echo "t"
+        echo "${part_type}"
+        echo "w"
+        ) | fdisk "${disk_name}"
+    else
+        (
+        echo "t"
+        echo "${part_num}"
+        echo "${part_type}"
+        echo "w"
+        ) | fdisk "${disk_name}"
+    fi
+
     case "${partition_type}" in
-        "${part_types[0]}") mkfs.fat -F32 -F "${disk_name}${part_num}";;
-        "${part_types[1]}") mkswap -F "${disk_name}${part_num}";;
+        "${part_types[0]}") mkfs.fat -F32 "${disk_name}${part_num}";;
+        "${part_types[1]}") mkswap -f "${disk_name}${part_num}";;
         "${part_types[2]}") mkfs.ext4 -F "${disk_name}${part_num}";;
         "${part_types[3]}") mkfs.ntfs -F "${disk_name}${part_num}";;
     esac
@@ -161,8 +208,8 @@ function mountDisks() {
         exit $fdisk_error
     fi
 
-    mount "${root_part}" $arch_mount_path
-    mount --mkdir "${boot_part}" $arch_mount_boot_path
+    mount "${root_part}" --mkdir $arch_mount_path
+    mount "${boot_part}" --mkdir $arch_mount_boot_path
 
     if [[ $swap_part ]]; then
         test -e "${swap_part}"
@@ -191,14 +238,14 @@ function createFstab() {
 #     updatePacmanMirrors
 function updatePacmanMirrors() {
     reflector -c "US" -f 12 -l 10 -n 12 -p "https" --save $pacman_mirrorlist_path
-    pacman -Syy
 }
 
 # Packstrap basic packages into the arch install.
 # Usage:
 #     installBasePackages
 function installBasePackages() {
-    pacstrap -K $arch_mount_path "${base_packages[@]}"
+    pacstrap $arch_mount_path "${base_packages[@]}"
+    echo "pacman -Syyu --noconfirm" | arch-chroot $arch_mount_path
 }
 
 ## Locale Setup Functions ##
@@ -216,8 +263,8 @@ function setupTimeLocales() {
     local user_timezone=$1
 
     (
-    ln -sf "${zone_info_path}/${user_timezone}" $localtime_path
-    hwclock --systohc
+    echo "ln -sf ${zone_info_path}/${user_timezone} $localtime_path"
+    echo "hwclock --systohc"
     ) | arch-chroot $arch_mount_path
 }
 
@@ -245,7 +292,7 @@ function copyLocaleConf() {
 # Usage:
 #     setupLocales
 function setupLocales() {
-    locale-gen >&2 | arch-chroot $arch_mount_path
+    echo "locale-gen" | arch-chroot $arch_mount_path
 }
 
 ## Network Setup Functions ##
@@ -286,5 +333,49 @@ function setupHosts() {
     ) >> $hosts_path
 }
 
-# User setup functions
+# Setup network manager.
+# Usage:
+#     setupNetworkManager
+function setupNetworkManager() {
+    local network_manager_service="NetworkManager.service"
 
+    (
+    echo "pacman -S ${network_packages[*]} --noconfirm"
+    echo "systemctl enable $network_manager_service"
+    ) | arch-chroot $arch_mount_path
+}
+
+## Bootloader Setup Functions ##
+
+# Setup rEFInd boot manager
+# Usage:
+#     setupRefind
+function setupRefind() {
+    local boot_part=""
+    local root_part=""
+
+    boot_part=$(lsblk -no NAME,MOUNTPOINTS | grep -E "${arch_mount_boot_path}$" | grep -oE ".* ")
+    boot_part=${boot_part:2:-1}
+
+    root_part=$(lsblk -no NAME,MOUNTPOINTS | grep -E "${arch_mount_path}$" | grep -oE ".* ")
+    root_part=${root_part:2:-1}
+
+    (
+    echo "pacman -Sy ${refind_packages[*]} --noconfirm"
+    echo "refind-install --usedefault ${boot_part} --alldrivers"
+    echo "mkrlconf"
+    ) | arch-chroot $arch_mount_path
+
+    generateRefindConf
+}
+
+# Setup refind_linux.conf file
+# Usage:
+#     generateRefindConf
+function generateRefindConf() {
+    (
+    echo "\"Boot with minimal options\"   \"${boot_args[*]} ${default_boot_args[*]}\""
+    echo "\"Boot with fallback options\"   \"${boot_args[*]} ${fallback_boot_args[*]}\""
+    echo "\"Boot to the terminal\"   \"${boot_args[*]} ${default_boot_args[*]} ${terminal_boot_args[*]}\""
+    ) > $refind_conf_path
+}
