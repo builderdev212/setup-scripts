@@ -7,8 +7,6 @@ fdisk_error=1
 mount_error=2
 locale_error=3
 network_error=4
-user_error=5
-bootloader_error=6
 
 ## Important Filepaths ##
 
@@ -361,9 +359,8 @@ function setupRefind() {
     root_part=${root_part:2:-1}
 
     (
-    echo "pacman -Sy ${refind_packages[*]} --noconfirm"
+    echo "pacman -Sy ${refind_packages[*]} ${filesystem_tools_packages[*]} --noconfirm"
     echo "refind-install --usedefault ${boot_part} --alldrivers"
-    echo "mkrlconf"
     ) | arch-chroot $arch_mount_path
 
     generateRefindConf
@@ -373,9 +370,16 @@ function setupRefind() {
 # Usage:
 #     generateRefindConf
 function generateRefindConf() {
+    local root_part=""
+    root_part=$(lsblk -no NAME,MOUNTPOINTS | grep -E "${arch_mount_path}$" | grep -oE ".* ")
+    root_part=${root_part:2:-1}
+
+    local root_uuid=""
+    root_uuid=$(blkid -s UUID -o value "${root_part}")
+
     (
-    echo "\"Boot with minimal options\"   \"${boot_args[*]} ${default_boot_args[*]}\""
-    echo "\"Boot with fallback options\"   \"${boot_args[*]} ${fallback_boot_args[*]}\""
-    echo "\"Boot to the terminal\"   \"${boot_args[*]} ${default_boot_args[*]} ${terminal_boot_args[*]}\""
+    echo "\"Boot with minimal options\"   \"root=UUID=${root_uuid} ${boot_args[*]} ${default_boot_args[*]}\""
+    echo "\"Boot with fallback options\"   \"root=UUID=${root_uuid} ${boot_args[*]} ${fallback_boot_args[*]}\""
+    echo "\"Boot to the terminal\"   \"root=UUID=${root_uuid} ${boot_args[*]} ${default_boot_args[*]} ${terminal_boot_args[*]}\""
     ) > $refind_conf_path
 }
