@@ -40,6 +40,8 @@ setup_path() {
 
     echo "Copying UEFI vars..."
     cp $OG_OVMF_VARS "$OVMF_VARS"
+    chmod u=rw,g=rw,o=rw "$OVMF_VARS"
+#     cp $OG_OVMF "$OVMF"
 }
 
 # Create virtual drive
@@ -64,9 +66,9 @@ build() {
 run() {
     echo "Running..."
     qemu-system-x86_64 -boot c \
-                       -drive file="$PATH_OF_SCRIPT/$IMAGE_NAME/drive.cow" \
-                       -drive if=pflash,format=raw,readonly=on,file=$OVMF_CODE \
+                       -drive if=pflash,format=raw,readonly=on,file="$OVMF_CODE" \
                        -drive if=pflash,format=raw,file="$OVMF_VARS" \
+                       -drive file="$PATH_OF_SCRIPT/$IMAGE_NAME/drive.cow" \
                        -machine q35 \
                        -enable-kvm \
                        -device intel-iommu,caching-mode=on \
@@ -79,10 +81,10 @@ run() {
 run_installer() {
     echo "Entering install environment..."
     qemu-system-x86_64 -boot d \
+                       -drive if=pflash,format=raw,readonly=on,file="$OVMF_CODE" \
+                       -drive if=pflash,format=raw,file="$OVMF_VARS" \
                        -cdrom "$PATH_OF_INSTALLER" \
                        -drive file="$PATH_OF_SCRIPT/$IMAGE_NAME/drive.cow" \
-                       -drive if=pflash,format=raw,readonly=on,file=$OVMF_CODE \
-                       -drive if=pflash,format=raw,file="$OVMF_VARS" \
                        -virtfs local,path="$TOOL_PATH",mount_tag=host0,security_model=passthrough,id=host0 \
                        -machine q35 \
                        -enable-kvm \
@@ -96,9 +98,7 @@ run_installer() {
 
 clean() {
     echo "Cleaning environment..."
-
     rm -r "${PATH_OF_SCRIPT:?}/$IMAGE_NAME"
-
 }
 
 # Make sure one and only one argument was passed.

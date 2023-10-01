@@ -31,7 +31,8 @@ hosts_path="${arch_mount_path}/etc/hosts"
 refind_conf_path="${arch_mount_path}/boot/refind_linux.conf"
 
 ## Package Lists ##
-base_packages=("base" "linux" "linux-firmware" "linux-headers")
+linux_kernel="linux"
+base_packages=("base" "$linux_kernel" "linux-firmware" "linux-headers")
 refind_packages=("refind" "efibootmgr")
 network_packages=("networkmanager")
 filesystem_tools_packages=("mtools" "dosfstools")
@@ -39,8 +40,8 @@ cli_tool_packages=("nano" "reflector")
 
 ## rEFInd boot args ##
 boot_args=("rw" "add_efi_memmap")
-default_boot_args=("initrd=initramfs-%v.img")
-fallback_boot_args=("initrd=initramfs-%v-fallback.img")
+default_boot_args=("initrd=initramfs-$linux_kernel.img")
+fallback_boot_args=("initrd=initramfs-$linux_kernel-fallback.img")
 terminal_boot_args=("systemd.unit=multi-user.target")
 
 ## Disk Related Functions ##
@@ -350,17 +351,13 @@ function setupNetworkManager() {
 #     setupRefind
 function setupRefind() {
     local boot_part=""
-    local root_part=""
 
     boot_part=$(lsblk -no NAME,MOUNTPOINTS | grep -E "${arch_mount_boot_path}$" | grep -oE ".* ")
     boot_part=${boot_part:2:-1}
 
-    root_part=$(lsblk -no NAME,MOUNTPOINTS | grep -E "${arch_mount_path}$" | grep -oE ".* ")
-    root_part=${root_part:2:-1}
-
     (
     echo "pacman -Sy ${refind_packages[*]} ${filesystem_tools_packages[*]} --noconfirm"
-    echo "refind-install --usedefault ${boot_part} --alldrivers"
+    echo "refind-install"
     ) | arch-chroot $arch_mount_path
 
     generateRefindConf
@@ -375,7 +372,7 @@ function generateRefindConf() {
     root_part=${root_part:2:-1}
 
     local root_uuid=""
-    root_uuid=$(blkid -s UUID -o value "${root_part}")
+    root_uuid=$(blkid -s UUID -o value "/dev/${root_part}")
 
     (
     echo "\"Boot with minimal options\"   \"root=UUID=${root_uuid} ${boot_args[*]} ${default_boot_args[*]}\""

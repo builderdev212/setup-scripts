@@ -19,3 +19,8 @@ setupHostname archvm
 setupHosts
 setupRefind
 setupNetworkManager
+
+
+# Run these after this script finishes:
+#     arch-chroot /mnt
+#     passwd
