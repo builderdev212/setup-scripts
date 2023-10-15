@@ -19,8 +19,14 @@ setupHostname archvm
 setupHosts
 setupRefind
 setupNetworkManager
+installUserPackages
+createUser myadmin --sudo
+createUser myuser
+installYay myadmin
 
 
 # Run these after this script finishes:
 #     arch-chroot /mnt
 #     passwd
+#     passwd myadmin
+#     passwd myuser

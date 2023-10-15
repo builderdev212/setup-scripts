@@ -41,7 +41,6 @@ setup_path() {
     echo "Copying UEFI vars..."
     cp $OG_OVMF_VARS "$OVMF_VARS"
     chmod u=rw,g=rw,o=rw "$OVMF_VARS"
-#     cp $OG_OVMF "$OVMF"
 }
 
 # Create virtual drive

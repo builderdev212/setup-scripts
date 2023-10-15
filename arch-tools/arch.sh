@@ -7,6 +7,9 @@ fdisk_error=1
 mount_error=2
 locale_error=3
 network_error=4
+boot_error=5
+mkinitcpio_error=6
+user_error=7
 
 ## Important Filepaths ##
 
@@ -30,16 +33,37 @@ hosts_path="${arch_mount_path}/etc/hosts"
 # rEFInd filepaths
 refind_conf_path="${arch_mount_path}/boot/refind_linux.conf"
 
+# mkinitcpio filepaths
+mkinitcpio_conf_path="${arch_mount_path}/etc/mkinitcpio.conf"
+
+# User filepaths
+sudoer_path="${arch_mount_path}/etc/sudoers"
+
+## URLS ##
+
+yay_url="https://aur.archlinux.org/yay.git"
+
 ## Package Lists ##
 linux_kernel="linux"
 base_packages=("base" "$linux_kernel" "linux-firmware" "linux-headers")
 refind_packages=("refind" "efibootmgr")
 network_packages=("networkmanager")
 filesystem_tools_packages=("mtools" "dosfstools")
+aur_install_packages=("base-devel" "git")
+mkinitcpio_packages=("aic94xx-firmware" "ast-firmware" "linux-firmware-bnx2x" "linux-firmware-liquidio" "linux-firmware-mellanox" "linux-firmware-nfp" "linux-firmware-qlogic" "upd72020x-fw" "wd719x-firmware")
+user_packages=("sudo")
 cli_tool_packages=("nano" "reflector")
+
+## Microcode args ##
+intel_microcode_package="intel-ucode"
+intel_cpu_name="Intel"
+amd_microcode_package="amd-ucode"
+amd_cpu_name="AMD"
 
 ## rEFInd boot args ##
 boot_args=("rw" "add_efi_memmap")
+intel_microcode_arg="initrd=${intel_microcode_package}.img"
+amd_microcode_arg="initrd=${amd_microcode_package}.img"
 default_boot_args=("initrd=initramfs-$linux_kernel.img")
 fallback_boot_args=("initrd=initramfs-$linux_kernel-fallback.img")
 terminal_boot_args=("systemd.unit=multi-user.target")
@@ -346,7 +370,7 @@ function setupNetworkManager() {
 
 ## Bootloader Setup Functions ##
 
-# Setup rEFInd boot manager
+# Setup rEFInd boot manager.
 # Usage:
 #     setupRefind
 function setupRefind() {
@@ -360,7 +384,29 @@ function setupRefind() {
     echo "refind-install"
     ) | arch-chroot $arch_mount_path
 
+    installMicrocode
     generateRefindConf
+}
+
+# Dectect CPU brand and install proper microcode.
+# Usage:
+#     installMicrocode
+function installMicrocode() {
+    is_intel=$(lscpu | grep -E "Vendor ID" | grep -oE $intel_cpu_name)
+    is_amd=$(lscpu | grep -E "Vendor ID" | grep -oE $amd_cpu_name)
+
+    if [[ $is_intel == "${intel_cpu_name}" ]]; then
+        (
+        echo "pacman -Sy ${intel_microcode_package} --noconfirm"
+        )  | arch-chroot $arch_mount_path
+    elif [[ $is_amd == "${amd_cpu_name}" ]]; then
+        (
+        echo "pacman -Sy ${amd_microcode_package} --noconfirm"
+        )  | arch-chroot $arch_mount_path
+    else
+        echo "Error: CPU Detected was neither AMD or Intel." >&2
+        exit $boot_error
+    fi
 }
 
 # Setup refind_linux.conf file
@@ -374,9 +420,101 @@ function generateRefindConf() {
     local root_uuid=""
     root_uuid=$(blkid -s UUID -o value "/dev/${root_part}")
 
+    local microcode_arg=""
+
+    is_intel=$(lscpu | grep -E "Vendor ID" | grep -oE $intel_cpu_name)
+    is_amd=$(lscpu | grep -E "Vendor ID" | grep -oE $amd_cpu_name)
+
+    if [[ $is_intel == "${intel_cpu_name}" ]]; then
+        microcode_arg=$intel_microcode_arg
+    elif [[ $is_amd == "${amd_cpu_name}" ]]; then
+        microcode_arg=$amd_microcode_arg
+    else
+        echo "Error: CPU Detected was neither AMD or Intel." >&2
+        exit $boot_error
+    fi
+
     (
-    echo "\"Boot with minimal options\"   \"root=UUID=${root_uuid} ${boot_args[*]} ${default_boot_args[*]}\""
-    echo "\"Boot with fallback options\"   \"root=UUID=${root_uuid} ${boot_args[*]} ${fallback_boot_args[*]}\""
-    echo "\"Boot to the terminal\"   \"root=UUID=${root_uuid} ${boot_args[*]} ${default_boot_args[*]} ${terminal_boot_args[*]}\""
+    echo "\"Boot with minimal options\"   \"root=UUID=${root_uuid} ${boot_args[*]} ${microcode_arg} ${default_boot_args[*]}\""
+    echo "\"Boot with fallback options\"   \"root=UUID=${root_uuid} ${boot_args[*]} ${microcode_arg} ${fallback_boot_args[*]}\""
+    echo "\"Boot to the terminal\"   \"root=UUID=${root_uuid} ${boot_args[*]} ${microcode_arg} ${default_boot_args[*]} ${terminal_boot_args[*]}\""
     ) > $refind_conf_path
+}
+
+## Base Setup Functions ##
+
+# Setup yay AUR helper
+# Usage:
+#     installYay user
+#                (ex. myuser)
+function installYay() {
+     if [[ $# != 1 ]]; then
+        echo "Error: installYay requires 1 arguement, $# was given." >&2
+        exit $user_error
+    fi
+
+    local username=$1
+
+    if [[ -e $(id -u "${username}") ]] ; then
+        echo "Error: \"${username}\" doesn't exist." >&2
+        exit $user_error
+    fi
+
+    (
+    echo "pacman -Sy --needed ${aur_install_packages[*]} --noconfirm"
+    echo "su ${username}"
+    echo "cd ~"
+    echo "git clone ${yay_url}"
+    echo "cd ~/yay"
+    echo "makepkg -si --noconfirm"
+    echo "cd .."
+    echo "rm -rf yay"
+    echo "exit"
+    echo "cd /"
+    ) | arch-chroot $arch_mount_path
+}
+
+## User Setup Functions ##
+
+# Install packages needed for users
+# Usage:
+#     installUserPackages
+function installUserPackages() {
+    (
+    echo "pacman -Sy --needed ${user_packages[*]} --noconfirm"
+    ) | arch-chroot $arch_mount_path
+}
+
+# Setup a new user.
+# Usage:
+#     createUser username    --sudo
+#                (ie myuser) (optional)
+function createUser() {
+    if [[ $# != 1 ]] && [[ $# != 2 ]]; then
+        echo "Error: createUser requires either 1 or 2 arguements, $# was given." >&2
+        exit $user_error
+    fi
+
+    local admin_arg="--sudo"
+
+    if [[ $# == 1 ]] && [[ $1 == "${admin_arg}" ]]; then
+        echo "Error: No username was given." >&2
+        exit $user_error
+    fi
+
+    if [[ $# == 2 ]] && [[ $2 != "${admin_arg}" ]]; then
+        echo "Error: Expected ${admin_arg}, got $2." >&2
+        exit $user_error
+    fi
+
+    local username=$1
+    local is_sudo=$2
+
+    (
+    echo "useradd -m ${username}"
+    ) | arch-chroot $arch_mount_path
+
+    if [[ $is_sudo == "${admin_arg}" ]]; then
+        echo "${username}  ALL=(ALL:ALL) NOPASSWD: ALL" >> $sudoer_path
+    fi
 }
