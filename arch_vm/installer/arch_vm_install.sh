@@ -2,7 +2,7 @@
 
 # You still have to set passwords manually.
 
-source "$(dirname "$0")/arch.sh"
+source "$(dirname "$0")/../../arch-tools/installer/arch.sh"
 
 clearDisk /dev/sda
 createPartition /dev/sda 1 uefi 1G
@@ -23,7 +23,6 @@ installUserPackages
 createUser myadmin --sudo
 createUser myuser
 installYay myadmin
-
 
 # Run these after this script finishes:
 #     arch-chroot /mnt

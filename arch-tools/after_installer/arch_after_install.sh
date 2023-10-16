@@ -26,12 +26,12 @@ function setupmkinitcpio() {
     local conf_path=$1
 
     if [ -e "${conf_path}" ]; then
-        cp "${conf_path}" $mkinitcpio_conf_path
+        sudo cp "${conf_path}" $mkinitcpio_conf_path
     else
         echo "Error: ${conf_path} doesn't exist." >&2
         exit $mkinitcpio_error
     fi
 
-    yay -Sy "${mkinitcpio_packages[*]}" --noconfirm
-    mkinitcpio -P
+    yay -Sy "${mkinitcpio_packages[@]}" --noconfirm
+    sudo mkinitcpio -P
 }

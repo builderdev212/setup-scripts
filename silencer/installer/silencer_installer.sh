@@ -2,7 +2,7 @@
 
 # You still have to set passwords manually.
 
-source "$(dirname "$0")/arch.sh"
+source "$(dirname "$0")/../../arch-tools/installer/arch.sh"
 
 # fix this later for nvme/usb for boot
 clearDisk /dev/sda
